@@ -1,5 +1,10 @@
-import React, { useState, useRef } from 'react'
-import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image, LogOut, Loader2 } from 'lucide-react'
+import React, { useState, useRef, useEffect } from 'react'
+import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image, LogOut, Loader2, Download, Smartphone, CheckCircle } from 'lucide-react'
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
 import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '../store/useStore'
 import { useAuth } from '../contexts/AuthContext'
@@ -43,6 +48,18 @@ export const Profile: React.FC = () => {
   const { user, signOut } = useAuth()
 
   const [activeTab, setActiveTab] = useState<Tab>('profile')
+
+  // PWA install state
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
+  const [pwaInstalled, setPwaInstalled] = useState(() =>
+    window.matchMedia('(display-mode: standalone)').matches
+  )
+  useEffect(() => {
+    const handler = (e: Event) => { e.preventDefault(); setInstallEvent(e as BeforeInstallPromptEvent) }
+    window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => setPwaInstalled(true))
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
   const [newWeight, setNewWeight] = useState('')
   const [newBodyFat, setNewBodyFat] = useState('')
   const [saved, setSaved] = useState(false)
@@ -268,6 +285,51 @@ export const Profile: React.FC = () => {
 
             {saved && (
               <p className="text-center text-sm text-green-500 font-medium animate-fade-in">Saved!</p>
+            )}
+          </div>
+        )}
+
+        {/* App / Install section — shown on profile tab */}
+        {activeTab === 'profile' && (
+          <div className="card p-4 space-y-3">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-primary-500" /> Get the App
+            </h3>
+            {pwaInstalled ? (
+              <div className="flex items-center gap-3 py-2">
+                <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">MacroFit is installed</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Running as a native app on this device</p>
+                </div>
+              </div>
+            ) : installEvent ? (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Install MacroFit on your home screen for fast, offline access — no app store needed.
+                </p>
+                <button
+                  onClick={async () => {
+                    await installEvent.prompt()
+                    const { outcome } = await installEvent.userChoice
+                    if (outcome === 'accepted') { setPwaInstalled(true); setInstallEvent(null) }
+                  }}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> Install on this device
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Add MacroFit to your home screen for quick access.
+                </p>
+                <ul className="text-xs text-gray-500 dark:text-gray-400 space-y-1 list-disc list-inside">
+                  <li><strong>Chrome / Android:</strong> tap the ⋮ menu → "Add to Home screen"</li>
+                  <li><strong>Safari / iOS:</strong> tap the share icon → "Add to Home Screen"</li>
+                  <li><strong>Edge / Desktop:</strong> click the install icon in the address bar</li>
+                </ul>
+              </div>
             )}
           </div>
         )}

@@ -21,9 +21,7 @@ export const useAuth = () => useContext(AuthContext)
 const SYNC_FIELDS = [
   'profile', 'currentWeightKg', 'goals', 'diary', 'weightLog',
   'mealTemplates', 'customFoods', 'recentFoodIds', 'streak',
-  'darkMode', 'bodyMeasurements', 'fastingSession',
-  // Note: progressPhotos excluded by default — can be large (base64 images)
-  // Add 'progressPhotos' here if cross-device photo sync is desired
+  'darkMode', 'bodyMeasurements', 'fastingSession', 'progressPhotos',
 ] as const
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -46,7 +44,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!error && data?.data) {
         isHydratingRef.current = true
         useStore.getState().hydrateStore(data.data)
-        setTimeout(() => { isHydratingRef.current = false }, 200)
+        // Give React time to flush the hydrated state before re-enabling saves
+        await new Promise(r => setTimeout(r, 300))
+        isHydratingRef.current = false
       }
     } catch {
       // No existing data for user — start fresh
@@ -65,6 +65,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       setSyncStatus('error')
     }
+  }
+
+  /** Flush any pending debounced save immediately (used on tab close / sign-out). */
+  const flushSave = () => {
+    if (!userRef.current || isHydratingRef.current) return
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    const state = useStore.getState() as unknown as Record<string, unknown>
+    const storeData: Record<string, unknown> = {}
+    for (const key of SYNC_FIELDS) storeData[key] = state[key]
+    saveUserData(userRef.current.id, storeData)
   }
 
   // Bootstrap session on mount
@@ -86,14 +99,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       userRef.current = session?.user ?? null
 
       if (event === 'SIGNED_IN' && session?.user) {
+        setLoading(true)
         await loadUserData(session.user.id)
+        setLoading(false)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [])
 
-  // Auto-sync store changes to Supabase (debounced 2s)
+  // Flush save when tab is hidden (user switches app, closes tab, etc.)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushSave()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
+  // Auto-sync store changes to Supabase (debounced 1.5s)
   useEffect(() => {
     const unsubscribe = useStore.subscribe((state) => {
       if (!userRef.current || isHydratingRef.current) return
@@ -105,7 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           storeData[key] = (state as unknown as Record<string, unknown>)[key]
         }
         saveUserData(userRef.current!.id, storeData)
-      }, 2000)
+      }, 1500)
     })
 
     return () => {
@@ -133,6 +157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const signOut = async () => {
+    flushSave()
     await supabase.auth.signOut()
     setUser(null)
     setSession(null)
