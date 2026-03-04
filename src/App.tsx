@@ -11,6 +11,7 @@ import { Progress } from './pages/Progress'
 import { Goals } from './pages/Goals'
 import { Profile } from './pages/Profile'
 import { LoginPage } from './pages/LoginPage'
+import { InstallPrompt } from './components/InstallPrompt'
 
 const SyncIndicator: React.FC = () => {
   const { syncStatus } = useAuth()
@@ -66,6 +67,7 @@ const AppContent: React.FC = () => {
       <BottomNav />
       <ChatInterface />
       <SyncIndicator />
+      <InstallPrompt />
     </div>
   )
 }

@@ -28,3 +28,35 @@ $$;
 CREATE TRIGGER user_data_updated_at
   BEFORE UPDATE ON public.user_data
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- ============================================================
+-- Progress Photos — Supabase Storage bucket + RLS policies
+-- ============================================================
+
+-- 4. Create storage bucket (public so URLs are shareable)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('progress-photos', 'progress-photos', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 5. Storage policies (photos are scoped to the uploading user)
+--    Path convention: {userId}/{photoId}.jpg
+
+CREATE POLICY "Users upload own photos"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    bucket_id = 'progress-photos'
+    AND auth.uid()::text = (string_to_array(name, '/'))[1]
+  );
+
+CREATE POLICY "Users delete own photos"
+  ON storage.objects FOR DELETE
+  TO authenticated
+  USING (
+    bucket_id = 'progress-photos'
+    AND auth.uid()::text = (string_to_array(name, '/'))[1]
+  );
+
+CREATE POLICY "Photos are publicly readable"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'progress-photos');

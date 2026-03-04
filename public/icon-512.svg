@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#22c55e"/>
+  <!-- Activity line icon -->
+  <polyline points="72,296 160,296 204,180 256,360 308,212 364,296 440,296"
+    stroke="white" stroke-width="34" fill="none"
+    stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

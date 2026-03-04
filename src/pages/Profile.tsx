@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react'
-import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image, LogOut } from 'lucide-react'
+import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image, LogOut, Loader2 } from 'lucide-react'
+import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '../store/useStore'
 import { useAuth } from '../contexts/AuthContext'
+import { uploadProgressPhoto, deleteProgressPhoto } from '../lib/storage'
 import { Navbar } from '../components/Layout/Navbar'
 import { calculateBMI, getBMICategory, kgToLbs, cmToFeetInches, getTodayString } from '../utils/calculations'
 import { ActivityLevel, WeightGoal, UserProfile, PhotoPose } from '../types'
@@ -46,6 +48,7 @@ export const Profile: React.FC = () => {
   const [saved, setSaved] = useState(false)
   const [showCustomFoodForm, setShowCustomFoodForm] = useState(false)
   const [viewPhoto, setViewPhoto] = useState<string | null>(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [photoNote, setPhotoNote] = useState('')
   const [photoPose, setPhotoPose] = useState<PhotoPose>('front')
@@ -395,17 +398,37 @@ export const Profile: React.FC = () => {
                 onChange={async e => {
                   const file = e.target.files?.[0]
                   if (!file) return
-                  const dataUrl = await compressImage(file)
-                  addProgressPhoto({ date: getTodayString(), dataUrl, pose: photoPose, notes: photoNote || undefined })
-                  setPhotoNote('')
-                  e.target.value = ''
+                  setPhotoUploading(true)
+                  try {
+                    const photoId = uuidv4()
+                    const dataUrl = await compressImage(file)
+                    // Try Supabase Storage first; fall back to base64 if not configured
+                    const storageUrl = user
+                      ? await uploadProgressPhoto(user.id, photoId, dataUrl)
+                      : null
+                    addProgressPhoto({
+                      id: photoId,
+                      date: getTodayString(),
+                      dataUrl: storageUrl ?? dataUrl,
+                      pose: photoPose,
+                      notes: photoNote || undefined,
+                    })
+                    setPhotoNote('')
+                  } finally {
+                    setPhotoUploading(false)
+                    e.target.value = ''
+                  }
                 }}
               />
               <button
                 onClick={() => photoInputRef.current?.click()}
-                className="btn-primary w-full flex items-center justify-center gap-2"
+                disabled={photoUploading}
+                className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <Plus className="w-4 h-4" /> Take / Upload Photo
+                {photoUploading
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</>
+                  : <><Plus className="w-4 h-4" /> Take / Upload Photo</>
+                }
               </button>
               {progressPhotos.length >= 18 && (
                 <p className="text-xs text-amber-500 text-center">Near the 20-photo limit. Remove old photos to add more.</p>
@@ -427,7 +450,10 @@ export const Profile: React.FC = () => {
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-1 py-0.5 flex justify-between items-center">
                       <span className="text-white text-xs capitalize">{p.pose}</span>
-                      <button onClick={() => removeProgressPhoto(p.id)} className="text-red-300 hover:text-red-200">
+                      <button onClick={() => {
+                        removeProgressPhoto(p.id)
+                        if (user) deleteProgressPhoto(user.id, p.id)
+                      }} className="text-red-300 hover:text-red-200">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>

@@ -77,7 +77,7 @@ interface AppState {
 
   // Progress photos
   progressPhotos: ProgressPhoto[]
-  addProgressPhoto: (p: Omit<ProgressPhoto, 'id'>) => void
+  addProgressPhoto: (p: Omit<ProgressPhoto, 'id'> & { id?: string }) => void
   removeProgressPhoto: (id: string) => void
 
   // Fasting
@@ -352,7 +352,7 @@ export const useStore = create<AppState>()(
 
       addProgressPhoto: (p) => set((state) => {
         if (state.progressPhotos.length >= 20) state.progressPhotos.pop()
-        state.progressPhotos.unshift({ ...p, id: uuidv4() })
+        state.progressPhotos.unshift({ ...p, id: p.id ?? uuidv4() })
       }),
       removeProgressPhoto: (id) => set((state) => {
         state.progressPhotos = state.progressPhotos.filter(p => p.id !== id)
