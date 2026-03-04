@@ -35,19 +35,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUserData = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('user_data')
-        .select('data')
-        .eq('user_id', userId)
-        .single()
+      // Race the query against an 8-second timeout so loading never hangs forever
+      const result = await Promise.race([
+        supabase.from('user_data').select('data').eq('user_id', userId).single(),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 8000)),
+      ])
 
-      if (!error && data?.data) {
-        isHydratingRef.current = true
-        useStore.getState().hydrateStore(data.data)
-        // Give React time to flush the hydrated state before re-enabling saves
-        await new Promise(r => setTimeout(r, 300))
-        isHydratingRef.current = false
-      }
+      if (!result || !('data' in result) || result.error || !result.data?.data) return
+
+      isHydratingRef.current = true
+      useStore.getState().hydrateStore(result.data.data)
+      // Give React time to flush the hydrated state before re-enabling saves
+      await new Promise(r => setTimeout(r, 300))
+      isHydratingRef.current = false
     } catch {
       // No existing data for user — start fresh
     }
@@ -98,10 +98,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(session?.user ?? null)
       userRef.current = session?.user ?? null
 
+      // SIGNED_IN fires on explicit sign-in AND on token refresh.
+      // Don't touch loading here — getSession() already handles the initial load.
+      // For fresh sign-ins (loading is already false), hydrate in the background.
       if (event === 'SIGNED_IN' && session?.user) {
-        setLoading(true)
-        await loadUserData(session.user.id)
-        setLoading(false)
+        loadUserData(session.user.id)
       }
     })
 
