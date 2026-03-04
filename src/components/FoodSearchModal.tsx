@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { Search, X, Camera, Plus, Info, Clock, Star } from 'lucide-react'
-import { Food, MealType } from '../types'
+import { Search, X, Camera, Plus, Info, Clock, Star, Loader2 } from 'lucide-react'
+import { v4 as uuidv4 } from 'uuid'
+import { Food, MealType, FoodCategory } from '../types'
 import { FOOD_DATABASE, searchFoods } from '../data/foodDatabase'
 import { useStore } from '../store/useStore'
 import { NutritionLabel } from './NutritionLabel'
@@ -17,7 +18,12 @@ export const FoodSearchModal: React.FC<FoodSearchModalProps> = ({ date, mealType
   const [showNutrition, setShowNutrition] = useState<Food | null>(null)
   const [servings, setServings] = useState('1')
   const [activeTab, setActiveTab] = useState<'search' | 'recent' | 'custom'>('search')
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [barcodeLoading, setBarcodeLoading] = useState(false)
+  const [barcodeError, setBarcodeError] = useState('')
+  const [showBarcodePanel, setShowBarcodePanel] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const barcodeFileRef = useRef<HTMLInputElement>(null)
 
   const addFoodEntry = useStore(s => s.addFoodEntry)
   const recentFoodIds = useStore(s => s.recentFoodIds)
@@ -37,6 +43,72 @@ export const FoodSearchModal: React.FC<FoodSearchModalProps> = ({ date, mealType
     if (activeTab === 'custom') return customFoods
     return searchFoods(query, 30)
   }, [query, activeTab, recentFoodIds, customFoods])
+
+  const lookupBarcode = async (code: string) => {
+    if (!code.trim()) return
+    setBarcodeLoading(true)
+    setBarcodeError('')
+    try {
+      const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code.trim()}.json`)
+      const data = await res.json()
+      if (data.status !== 1 || !data.product) {
+        setBarcodeError('Product not found. Try searching by name.')
+        return
+      }
+      const p = data.product
+      const n = p.nutriments ?? {}
+      const serving = parseFloat(p.serving_quantity) || 100
+      const food: Food = {
+        id: `barcode_${uuidv4()}`,
+        name: p.product_name || p.product_name_en || 'Unknown Product',
+        brand: p.brands || undefined,
+        category: 'Custom' as FoodCategory,
+        servingSize: serving,
+        servingUnit: p.serving_size?.replace(/[\d.]/g, '').trim() || 'g',
+        calories:     Math.round(n['energy-kcal_serving'] ?? ((n['energy-kcal_100g'] ?? 0) * serving / 100)),
+        protein:      +(n['proteins_serving']      ?? ((n['proteins_100g']      ?? 0) * serving / 100)).toFixed(1),
+        carbs:        +(n['carbohydrates_serving']  ?? ((n['carbohydrates_100g'] ?? 0) * serving / 100)).toFixed(1),
+        fat:          +(n['fat_serving']            ?? ((n['fat_100g']           ?? 0) * serving / 100)).toFixed(1),
+        fiber:        +(n['fiber_serving']          ?? ((n['fiber_100g']         ?? 0) * serving / 100)).toFixed(1),
+        sugar:        +(n['sugars_serving']         ?? ((n['sugars_100g']        ?? 0) * serving / 100)).toFixed(1),
+        sodium:       Math.round((n['sodium_serving'] ?? ((n['sodium_100g'] ?? 0) * serving / 100)) * 1000),
+        potassium: 0, cholesterol: 0, saturatedFat: 0, transFat: 0,
+        vitaminA: 0, vitaminC: 0, calcium: 0, iron: 0,
+        isCustom: true,
+      }
+      setSelectedFood(food)
+      setShowBarcodePanel(false)
+      setBarcodeInput('')
+    } catch {
+      setBarcodeError('Network error. Check your connection.')
+    } finally {
+      setBarcodeLoading(false)
+    }
+  }
+
+  const handleBarcodeImage = async (file: File) => {
+    // Try BarcodeDetector API (Chrome/Android), fall back gracefully
+    if (!('BarcodeDetector' in window)) {
+      setBarcodeError('Live scanning not supported on this browser. Enter the barcode number manually.')
+      return
+    }
+    setBarcodeLoading(true)
+    try {
+      // @ts-expect-error BarcodeDetector not in TS lib yet
+      const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] })
+      const bitmap = await createImageBitmap(file)
+      const codes = await detector.detect(bitmap)
+      if (codes.length === 0) {
+        setBarcodeError('No barcode detected. Enter the number manually.')
+      } else {
+        await lookupBarcode(codes[0].rawValue)
+      }
+    } catch {
+      setBarcodeError('Could not read barcode. Enter the number manually.')
+    } finally {
+      setBarcodeLoading(false)
+    }
+  }
 
   const handleAdd = () => {
     if (!selectedFood) return
@@ -76,10 +148,52 @@ export const FoodSearchModal: React.FC<FoodSearchModalProps> = ({ date, mealType
           <h2 className="font-semibold text-gray-900 dark:text-gray-100 flex-1">
             Add to {mealType}
           </h2>
-          <button className="btn-icon" title="Scan barcode">
+          <button
+            className="btn-icon"
+            title="Scan barcode"
+            onClick={() => { setShowBarcodePanel(v => !v); setBarcodeError('') }}
+          >
             <Camera className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Barcode panel */}
+        {showBarcodePanel && (
+          <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl space-y-2">
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Barcode / UPC</p>
+            <div className="flex gap-2">
+              <input
+                value={barcodeInput}
+                onChange={e => setBarcodeInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && lookupBarcode(barcodeInput)}
+                placeholder="Enter barcode number…"
+                className="input-field flex-1 text-sm py-1.5"
+              />
+              <button
+                onClick={() => lookupBarcode(barcodeInput)}
+                disabled={barcodeLoading}
+                className="btn-primary px-3 py-1.5 text-sm flex items-center gap-1 disabled:opacity-60"
+              >
+                {barcodeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Go'}
+              </button>
+            </div>
+            <input
+              ref={barcodeFileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleBarcodeImage(f); e.target.value = '' }}
+            />
+            <button
+              onClick={() => barcodeFileRef.current?.click()}
+              className="btn-secondary w-full py-1.5 text-sm flex items-center justify-center gap-2"
+            >
+              <Camera className="w-4 h-4" /> Scan with Camera
+            </button>
+            {barcodeError && <p className="text-xs text-red-500">{barcodeError}</p>}
+          </div>
+        )}
 
         {/* Search bar */}
         <div className="relative">

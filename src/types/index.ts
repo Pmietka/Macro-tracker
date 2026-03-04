@@ -157,3 +157,32 @@ export interface DailyStreak {
   longest: number
   lastLoggedDate: string
 }
+
+export interface BodyMeasurement {
+  id: string
+  date: string
+  neck?: number
+  shoulders?: number
+  chest?: number
+  waist?: number
+  hips?: number
+  leftArm?: number
+  rightArm?: number
+  leftThigh?: number
+  notes?: string
+}
+
+export type PhotoPose = 'front' | 'side' | 'back'
+
+export interface ProgressPhoto {
+  id: string
+  date: string
+  dataUrl: string   // base64 compressed JPEG
+  pose: PhotoPose
+  notes?: string
+}
+
+export interface FastingSession {
+  startTime: number   // Date.now()
+  targetHours: number
+}

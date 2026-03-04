@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { MessageCircle, X, Send, Loader2, Bot, User } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Bot, User, Camera, Lightbulb } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '../../store/useStore'
 import { getTodayString } from '../../utils/calculations'
@@ -39,6 +39,7 @@ export const ChatInterface: React.FC = () => {
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const { goals, diary, currentWeightKg, profile, addFoodEntry, removeFoodEntry, addWeightEntry, addWater, updateStreak } = useStore()
 
@@ -67,6 +68,73 @@ export const ChatInterface: React.FC = () => {
       meal: e.mealType,
       calories: e.food.calories * e.servings,
     }))
+  }
+
+  const compressToBase64 = (file: File): Promise<string> =>
+    new Promise(resolve => {
+      const img = new window.Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        const max = 1024
+        const scale = Math.min(max / img.width, max / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(url)
+        resolve(canvas.toDataURL('image/jpeg', 0.75).split(',')[1])
+      }
+      img.src = url
+    })
+
+  const handlePhotoUpload = async (file: File) => {
+    const userMsg: ChatMessage = { id: uuidv4(), role: 'user', text: '📷 Analyzing meal photo…', timestamp: Date.now() }
+    setMessages(prev => [...prev, userMsg])
+    setLoading(true)
+    try {
+      const imageBase64 = await compressToBase64(file)
+      const res = await fetch('/api/analyze-photo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, mealType: 'unknown' }),
+      })
+      const data = await res.json()
+      const today = getTodayString()
+      const loggedActions: LoggedAction[] = []
+
+      for (const inp of (data.foods ?? [])) {
+        const food: Food = {
+          id: `photo_${uuidv4()}`,
+          name: inp.name,
+          category: (inp.category ?? 'Custom') as FoodCategory,
+          servingSize: inp.servingSize,
+          servingUnit: inp.servingUnit,
+          calories: inp.calories / inp.servings,
+          protein:  inp.protein  / inp.servings,
+          carbs:    inp.carbs    / inp.servings,
+          fat:      inp.fat      / inp.servings,
+          fiber:    inp.fiber    / inp.servings,
+          sugar:    inp.sugar    / inp.servings,
+          sodium:   inp.sodium   / inp.servings,
+          potassium: 0, cholesterol: 0, saturatedFat: 0, transFat: 0,
+          vitaminA: 0, vitaminC: 0, calcium: 0, iron: 0,
+          isCustom: true,
+        }
+        addFoodEntry(today, { foodId: food.id, food, servings: inp.servings, mealType: 'Lunch' as MealType })
+        loggedActions.push({ type: 'food', summary: `${inp.name} — ${Math.round(inp.calories)} kcal` })
+      }
+      if (loggedActions.length > 0) updateStreak()
+
+      const text = loggedActions.length > 0
+        ? `Logged ${loggedActions.length} item${loggedActions.length > 1 ? 's' : ''} from your photo.`
+        : "I couldn't identify food in that photo. Try a clearer shot."
+
+      setMessages(prev => [...prev, { id: uuidv4(), role: 'assistant', text, timestamp: Date.now(), actions: loggedActions }])
+    } catch {
+      setMessages(prev => [...prev, { id: uuidv4(), role: 'assistant', text: 'Photo analysis failed. Try again.', timestamp: Date.now() }])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const sendMessage = async () => {
@@ -271,7 +339,32 @@ export const ChatInterface: React.FC = () => {
           </div>
 
           {/* Input */}
-          <div className="px-3 py-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-white dark:bg-gray-800">
+          <div className="px-3 py-3 border-t border-gray-100 dark:border-gray-700 shrink-0 bg-white dark:bg-gray-800 space-y-2">
+            {/* Quick actions */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setInput('What should I eat to hit my remaining macros today?')}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-700"
+              >
+                <Lightbulb className="w-3 h-3" /> Suggest a meal
+              </button>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) { handlePhotoUpload(f) } e.target.value = '' }}
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={loading}
+                className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-700 disabled:opacity-40"
+              >
+                <Camera className="w-3 h-3" /> Photo
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 rounded-xl px-3 py-2">
               <input
                 ref={inputRef}

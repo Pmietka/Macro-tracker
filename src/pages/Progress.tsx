@@ -3,7 +3,7 @@ import {
   AreaChart, Area, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
-import { TrendingUp, TrendingDown, Scale, Flame, Target } from 'lucide-react'
+import { TrendingUp, TrendingDown, Scale, Flame, Target, Lightbulb, Loader2 } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Navbar } from '../components/Layout/Navbar'
 import { getDayNutrition, getLast7Days, getLast30Days, formatDate } from '../utils/calculations'
@@ -12,9 +12,24 @@ import { DiaryDay } from '../types'
 type Period = '7d' | '30d'
 type ChartType = 'calories' | 'macros' | 'weight'
 
+// Simple linear regression: returns slope (units per day) and intercept
+function linearRegression(points: { x: number; y: number }[]) {
+  const n = points.length
+  if (n < 2) return null
+  const sumX  = points.reduce((s, p) => s + p.x, 0)
+  const sumY  = points.reduce((s, p) => s + p.y, 0)
+  const sumXY = points.reduce((s, p) => s + p.x * p.y, 0)
+  const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0)
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+  const intercept = (sumY - slope * sumX) / n
+  return { slope, intercept }
+}
+
 export const Progress: React.FC = () => {
   const [period, setPeriod] = useState<Period>('7d')
   const [chartType, setChartType] = useState<ChartType>('calories')
+  const [insights, setInsights] = useState<string | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
 
   const diary = useStore(s => s.diary)
   const goals = useStore(s => s.goals)
@@ -67,6 +82,53 @@ export const Progress: React.FC = () => {
     const change = last - first
     return { first, last, change, trend: change < 0 ? 'down' : 'up' }
   }, [weightLog])
+
+  // Trend prediction using linear regression on all weight entries
+  const trendPrediction = useMemo(() => {
+    if (weightLog.length < 5) return null
+    const sorted = [...weightLog].sort((a, b) => a.date.localeCompare(b.date))
+    const origin = new Date(sorted[0].date).getTime()
+    const points = sorted.map(w => ({
+      x: (new Date(w.date).getTime() - origin) / 86400000,
+      y: w.weight,
+    }))
+    const reg = linearRegression(points)
+    if (!reg) return null
+    const ratePerWeek = reg.slope * 7
+    if (Math.abs(ratePerWeek) < 0.05) return { type: 'maintain' as const, ratePerWeek }
+    return { type: ratePerWeek < 0 ? 'losing' as const : 'gaining' as const, ratePerWeek }
+  }, [weightLog])
+
+  const getInsights = async () => {
+    setInsightsLoading(true)
+    setInsights(null)
+    try {
+      const last30 = getLast30Days()
+      const summaries = last30.map(date => {
+        const day: DiaryDay = diary[date] ?? { date, entries: [], waterIntake: 0, exercises: [] }
+        const n = getDayNutrition(day)
+        return `${date}: ${Math.round(n.calories)}kcal, P:${Math.round(n.protein)}g, C:${Math.round(n.carbs)}g, F:${Math.round(n.fat)}g`
+      }).filter(s => !s.includes(': 0kcal')).join('\n')
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Analyze my last 30 days of nutrition data and give me 3-5 specific, actionable insights about patterns, consistency, and areas to improve. Be concise.\n\nData:\n${summaries}\n\nGoals: ${goals.calories}kcal, P:${goals.protein}g, C:${goals.carbs}g, F:${goals.fat}g`,
+          }],
+          context: { goals, todayEntries: [] },
+        }),
+      })
+      const data = await res.json()
+      setInsights(data.text || 'No insights available.')
+    } catch {
+      setInsights('Failed to load insights. Try again.')
+    } finally {
+      setInsightsLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -235,7 +297,7 @@ export const Progress: React.FC = () => {
           </div>
         )}
 
-        {/* Weight change summary */}
+        {/* Weight change summary + trend prediction */}
         {chartType === 'weight' && weightStats && (
           <div className="card p-4">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">Weight Summary</h3>
@@ -256,8 +318,45 @@ export const Progress: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {trendPrediction && (
+              <div className="mt-3 pt-3 border-t dark:border-gray-700">
+                <p className="text-xs text-gray-500 mb-1">Trend Prediction</p>
+                {trendPrediction.type === 'maintain' ? (
+                  <p className="text-sm font-medium text-blue-500">Maintaining weight — change &lt;0.05 {profile.weightUnit}/week</p>
+                ) : (
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    At current pace: <span className={trendPrediction.type === 'losing' ? 'text-green-500' : 'text-amber-500'}>
+                      {trendPrediction.type === 'losing' ? '↓' : '↑'} {Math.abs(trendPrediction.ratePerWeek).toFixed(2)} {profile.weightUnit}/week
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
+
+        {/* Pattern insights */}
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-amber-500" /> AI Pattern Insights
+            </h3>
+            <button
+              onClick={getInsights}
+              disabled={insightsLoading}
+              className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1 disabled:opacity-60"
+            >
+              {insightsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lightbulb className="w-3 h-3" />}
+              {insightsLoading ? 'Analyzing…' : 'Analyze'}
+            </button>
+          </div>
+          {insights ? (
+            <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-line">{insights}</p>
+          ) : (
+            <p className="text-sm text-gray-400">Click Analyze to get personalized insights about your nutrition patterns from the last 30 days.</p>
+          )}
+        </div>
       </div>
     </div>
   )

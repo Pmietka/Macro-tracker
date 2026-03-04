@@ -6,6 +6,7 @@ import { Navbar } from '../components/Layout/Navbar'
 import { MacroRing } from '../components/MacroRing'
 import { MacroBar } from '../components/MacroBar'
 import { WaterTracker } from '../components/WaterTracker'
+import { FastingTimer } from '../components/FastingTimer'
 import { getDayNutrition, getTodayString, formatDate } from '../utils/calculations'
 
 export const Dashboard: React.FC = () => {

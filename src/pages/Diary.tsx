@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Trash2, ChevronLeft, ChevronRight, Copy, Dumbbell, ChevronDown, ChevronUp, Edit2 } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight, Copy, Dumbbell, ChevronDown, ChevronUp, Edit2, ChefHat, Bookmark } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Navbar } from '../components/Layout/Navbar'
 import { FoodSearchModal } from '../components/FoodSearchModal'
+import { RecipeBuilder } from '../components/RecipeBuilder'
 import { MealType, FoodEntry } from '../types'
 import { getDayNutrition, getTodayString, formatDate, getDateString } from '../utils/calculations'
 import { EXERCISE_DATABASE } from '../data/foodDatabase'
@@ -19,6 +20,7 @@ export const Diary: React.FC = () => {
   const [searchParams] = useSearchParams()
   const [currentDate, setCurrentDate] = useState(getTodayString())
   const [showSearch, setShowSearch] = useState(false)
+  const [showRecipe, setShowRecipe] = useState(false)
   const [activeMeal, setActiveMeal] = useState<MealType>(
     (searchParams.get('meal') as MealType) || 'Breakfast'
   )
@@ -33,6 +35,9 @@ export const Diary: React.FC = () => {
   const removeExerciseEntry = useStore(s => s.removeExerciseEntry)
   const updateFoodEntry = useStore(s => s.updateFoodEntry)
   const copyDayEntries = useStore(s => s.copyDayEntries)
+  const copyMealEntries = useStore(s => s.copyMealEntries)
+  const mealTemplates = useStore(s => s.mealTemplates)
+  const applyMealTemplate = useStore(s => s.applyMealTemplate)
   const currentWeightKg = useStore(s => s.currentWeightKg)
   const addExerciseEntry = useStore(s => s.addExerciseEntry)
 
@@ -77,12 +82,20 @@ export const Diary: React.FC = () => {
       <Navbar
         title="Food Diary"
         action={
-          <button
-            onClick={handleCopyYesterday}
-            className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1"
-          >
-            <Copy className="w-3.5 h-3.5" /> Yesterday
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowRecipe(true)}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1"
+            >
+              <ChefHat className="w-3.5 h-3.5" /> Recipe
+            </button>
+            <button
+              onClick={handleCopyYesterday}
+              className="btn-secondary py-1.5 px-3 text-xs flex items-center gap-1"
+            >
+              <Copy className="w-3.5 h-3.5" /> Yesterday
+            </button>
+          </div>
         }
       />
 
@@ -109,6 +122,26 @@ export const Diary: React.FC = () => {
       </div>
 
       <div className="page-container space-y-4">
+
+        {/* Quick-add favorites (meal templates) */}
+        {mealTemplates.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <Bookmark className="w-3 h-3" /> Quick Add
+            </p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {mealTemplates.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { applyMealTemplate(t.id, currentDate) }}
+                  className="shrink-0 px-3 py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 hover:border-primary-400 hover:text-primary-600 transition-colors shadow-sm"
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Daily summary strip */}
         <div className="card p-3">
@@ -141,10 +174,22 @@ export const Diary: React.FC = () => {
                     <p className="text-xs text-gray-400">{entries.length} item{entries.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-700 dark:text-gray-200">
                     {mealCals > 0 ? `${Math.round(mealCals)} kcal` : ''}
                   </span>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      const yesterday = new Date(currentDate + 'T12:00:00')
+                      yesterday.setDate(yesterday.getDate() - 1)
+                      copyMealEntries(getDateString(yesterday), currentDate, meal)
+                    }}
+                    className="p-1 rounded-lg text-gray-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                    title={`Copy yesterday's ${meal}`}
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                  </button>
                   {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                 </div>
               </button>
@@ -270,6 +315,7 @@ export const Diary: React.FC = () => {
           onClose={() => setShowSearch(false)}
         />
       )}
+      {showRecipe && <RecipeBuilder onClose={() => setShowRecipe(false)} />}
     </div>
   )
 }

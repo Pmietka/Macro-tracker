@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid'
 import {
   DiaryDay, FoodEntry, Food, MealType, ExerciseEntry, Exercise,
   WeightEntry, UserProfile, MacroGoals, MealTemplate, DailyStreak,
+  BodyMeasurement, ProgressPhoto, FastingSession,
 } from '../types'
 import { getTodayString, calculateBMR, calculateTDEE, calculateCalorieGoal, calculateMacroGoals, lbsToKg } from '../utils/calculations'
 
@@ -67,6 +68,22 @@ interface AppState {
   addRecentFood: (foodId: string) => void
   updateStreak: () => void
   toggleDarkMode: () => void
+  copyMealEntries: (fromDate: string, toDate: string, mealType: MealType) => void
+
+  // Body measurements
+  bodyMeasurements: BodyMeasurement[]
+  addBodyMeasurement: (m: Omit<BodyMeasurement, 'id'>) => void
+  removeBodyMeasurement: (id: string) => void
+
+  // Progress photos
+  progressPhotos: ProgressPhoto[]
+  addProgressPhoto: (p: Omit<ProgressPhoto, 'id'>) => void
+  removeProgressPhoto: (id: string) => void
+
+  // Fasting
+  fastingSession: FastingSession | null
+  startFasting: (targetHours: number) => void
+  stopFasting: () => void
 
   getDayOrCreate: (date: string) => DiaryDay
 }
@@ -109,6 +126,9 @@ export const useStore = create<AppState>()(
       recentFoodIds: [],
       darkMode: false,
       streak: { current: 0, longest: 0, lastLoggedDate: '' },
+      bodyMeasurements: [],
+      progressPhotos: [],
+      fastingSession: null,
 
       getDayOrCreate: (date: string): DiaryDay => {
         const existing = get().diary[date]
@@ -307,6 +327,38 @@ export const useStore = create<AppState>()(
       toggleDarkMode: () => set((state) => {
         state.darkMode = !state.darkMode
       }),
+
+      copyMealEntries: (fromDate, toDate, mealType) => set((state) => {
+        const fromDay = state.diary[fromDate]
+        if (!fromDay) return
+        if (!state.diary[toDate]) {
+          state.diary[toDate] = { date: toDate, entries: [], waterIntake: 0, exercises: [] }
+        }
+        const mealEntries = fromDay.entries
+          .filter(e => e.mealType === mealType)
+          .map(e => ({ ...e, id: uuidv4(), timestamp: Date.now() }))
+        state.diary[toDate].entries.push(...mealEntries)
+      }),
+
+      addBodyMeasurement: (m) => set((state) => {
+        state.bodyMeasurements.unshift({ ...m, id: uuidv4() })
+      }),
+      removeBodyMeasurement: (id) => set((state) => {
+        state.bodyMeasurements = state.bodyMeasurements.filter(m => m.id !== id)
+      }),
+
+      addProgressPhoto: (p) => set((state) => {
+        if (state.progressPhotos.length >= 20) state.progressPhotos.pop()
+        state.progressPhotos.unshift({ ...p, id: uuidv4() })
+      }),
+      removeProgressPhoto: (id) => set((state) => {
+        state.progressPhotos = state.progressPhotos.filter(p => p.id !== id)
+      }),
+
+      startFasting: (targetHours) => set((state) => {
+        state.fastingSession = { startTime: Date.now(), targetHours }
+      }),
+      stopFasting: () => set((state) => { state.fastingSession = null }),
     })),
     {
       name: 'macrofit-storage',

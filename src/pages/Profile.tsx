@@ -1,12 +1,11 @@
-import React, { useState } from 'react'
-import { Scale, Plus, Trash2, ChevronRight, Award, Flame, Activity, User } from 'lucide-react'
+import React, { useState, useRef } from 'react'
+import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Navbar } from '../components/Layout/Navbar'
-import { calculateBMI, getBMICategory, kgToLbs, lbsToKg, cmToFeetInches, getTodayString } from '../utils/calculations'
-import { ActivityLevel, WeightGoal, UserProfile } from '../types'
-import { FOOD_DATABASE } from '../data/foodDatabase'
+import { calculateBMI, getBMICategory, kgToLbs, cmToFeetInches, getTodayString } from '../utils/calculations'
+import { ActivityLevel, WeightGoal, UserProfile, PhotoPose } from '../types'
 
-type Tab = 'profile' | 'weight' | 'custom' | 'templates'
+type Tab = 'profile' | 'weight' | 'body' | 'photos' | 'custom' | 'templates'
 
 const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
   sedentary: 'Sedentary (desk job)',
@@ -31,12 +30,39 @@ export const Profile: React.FC = () => {
   const deleteMealTemplate = useStore(s => s.deleteMealTemplate)
   const addCustomFood = useStore(s => s.addCustomFood)
   const recalculateGoals = useStore(s => s.recalculateGoals)
+  const bodyMeasurements = useStore(s => s.bodyMeasurements)
+  const addBodyMeasurement = useStore(s => s.addBodyMeasurement)
+  const removeBodyMeasurement = useStore(s => s.removeBodyMeasurement)
+  const progressPhotos = useStore(s => s.progressPhotos)
+  const addProgressPhoto = useStore(s => s.addProgressPhoto)
+  const removeProgressPhoto = useStore(s => s.removeProgressPhoto)
 
   const [activeTab, setActiveTab] = useState<Tab>('profile')
   const [newWeight, setNewWeight] = useState('')
   const [newBodyFat, setNewBodyFat] = useState('')
   const [saved, setSaved] = useState(false)
   const [showCustomFoodForm, setShowCustomFoodForm] = useState(false)
+  const [viewPhoto, setViewPhoto] = useState<string | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [photoNote, setPhotoNote] = useState('')
+  const [photoPose, setPhotoPose] = useState<PhotoPose>('front')
+
+  const compressImage = (file: File): Promise<string> =>
+    new Promise(resolve => {
+      const img = new window.Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        const max = 800
+        const scale = Math.min(max / img.width, max / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(url)
+        resolve(canvas.toDataURL('image/jpeg', 0.65))
+      }
+      img.src = url
+    })
 
   const displayWeight = profile.weightUnit === 'lbs' ? kgToLbs(currentWeightKg) : currentWeightKg
   const bmi = calculateBMI(currentWeightKg, profile.heightCm)
@@ -125,7 +151,7 @@ export const Profile: React.FC = () => {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-white dark:bg-gray-800 rounded-2xl p-1 shadow-sm overflow-x-auto">
-          {(['profile', 'weight', 'custom', 'templates'] as Tab[]).map(tab => (
+          {(['profile', 'weight', 'body', 'photos', 'custom', 'templates'] as Tab[]).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -288,6 +314,125 @@ export const Profile: React.FC = () => {
           </div>
         )}
 
+        {/* Body measurements tab */}
+        {activeTab === 'body' && (
+          <div className="space-y-4">
+            <BodyMeasurementForm onSave={m => addBodyMeasurement({ ...m, date: getTodayString() })} />
+            <div className="card overflow-hidden">
+              <div className="p-4 border-b dark:border-gray-700">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <Ruler className="w-4 h-4 text-blue-500" /> Measurement History
+                </h3>
+              </div>
+              {bodyMeasurements.length === 0 ? (
+                <p className="text-center py-8 text-gray-400 text-sm">No measurements logged yet</p>
+              ) : (
+                bodyMeasurements.slice(0, 20).map(m => (
+                  <div key={m.id} className="px-4 py-3 border-b dark:border-gray-700 last:border-0">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs text-gray-400 mb-1">{m.date}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm">
+                          {m.waist    && <span>Waist <b>{m.waist}</b></span>}
+                          {m.chest    && <span>Chest <b>{m.chest}</b></span>}
+                          {m.hips     && <span>Hips <b>{m.hips}</b></span>}
+                          {m.leftArm  && <span>Arm <b>{m.leftArm}</b></span>}
+                          {m.neck     && <span>Neck <b>{m.neck}</b></span>}
+                        </div>
+                      </div>
+                      <button onClick={() => removeBodyMeasurement(m.id)} className="btn-icon p-1.5 text-red-400">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Progress photos tab */}
+        {activeTab === 'photos' && (
+          <div className="space-y-4">
+            <div className="card p-4 space-y-3">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <Image className="w-4 h-4 text-purple-500" /> Add Progress Photo
+              </h3>
+              <div className="flex gap-2">
+                {(['front', 'side', 'back'] as PhotoPose[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPhotoPose(p)}
+                    className={`flex-1 py-1.5 rounded-xl text-xs font-medium capitalize transition-colors ${photoPose === p ? 'bg-purple-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}
+                  >{p}</button>
+                ))}
+              </div>
+              <input
+                value={photoNote}
+                onChange={e => setPhotoNote(e.target.value)}
+                placeholder="Optional note..."
+                className="input-field text-sm"
+              />
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const dataUrl = await compressImage(file)
+                  addProgressPhoto({ date: getTodayString(), dataUrl, pose: photoPose, notes: photoNote || undefined })
+                  setPhotoNote('')
+                  e.target.value = ''
+                }}
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                className="btn-primary w-full flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Take / Upload Photo
+              </button>
+              {progressPhotos.length >= 18 && (
+                <p className="text-xs text-amber-500 text-center">Near the 20-photo limit. Remove old photos to add more.</p>
+              )}
+            </div>
+
+            {/* Photo grid */}
+            {progressPhotos.length === 0 ? (
+              <p className="text-center py-8 text-gray-400 text-sm">No photos yet</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {progressPhotos.map(p => (
+                  <div key={p.id} className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700">
+                    <img
+                      src={p.dataUrl}
+                      alt={p.pose}
+                      className="w-full h-full object-cover cursor-pointer"
+                      onClick={() => setViewPhoto(p.dataUrl)}
+                    />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-1 py-0.5 flex justify-between items-center">
+                      <span className="text-white text-xs capitalize">{p.pose}</span>
+                      <button onClick={() => removeProgressPhoto(p.id)} className="text-red-300 hover:text-red-200">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <div className="absolute top-1 left-1 bg-black/40 text-white text-xs px-1 rounded">{p.date}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Full-screen photo viewer */}
+            {viewPhoto && (
+              <div className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => setViewPhoto(null)}>
+                <img src={viewPhoto} alt="progress" className="max-w-full max-h-full object-contain" />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Custom foods tab */}
         {activeTab === 'custom' && (
           <div className="space-y-4">
@@ -372,6 +517,45 @@ const Badge: React.FC<{ label: string; emoji: string }> = ({ label, emoji }) => 
     <span className="text-xs font-medium text-amber-700 dark:text-amber-300">{label}</span>
   </div>
 )
+
+const BodyMeasurementForm: React.FC<{ onSave: (m: Record<string, number | undefined>) => void }> = ({ onSave }) => {
+  const [form, setForm] = useState<Record<string, string>>({})
+  const fields: [string, string][] = [
+    ['neck', 'Neck'], ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['waist', 'Waist'],
+    ['hips', 'Hips'], ['leftArm', 'Arm (L)'], ['rightArm', 'Arm (R)'], ['leftThigh', 'Thigh'],
+  ]
+  const n = (v: string) => v ? parseFloat(v) : undefined
+  const handleSave = () => {
+    const data = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, n(v)]))
+    if (Object.values(data).every(v => v === undefined)) return
+    onSave(data)
+    setForm({})
+  }
+  return (
+    <div className="card p-4 space-y-3">
+      <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+        <Ruler className="w-4 h-4 text-blue-500" /> Log Measurements (cm)
+      </h3>
+      <div className="grid grid-cols-2 gap-2">
+        {fields.map(([key, label]) => (
+          <div key={key}>
+            <label className="text-xs text-gray-500 block mb-0.5">{label}</label>
+            <input
+              type="number" step="0.1" min="0"
+              value={form[key] ?? ''}
+              onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+              className="input-field text-sm py-1.5"
+              placeholder="—"
+            />
+          </div>
+        ))}
+      </div>
+      <button onClick={handleSave} className="btn-primary w-full flex items-center justify-center gap-2">
+        <Plus className="w-4 h-4" /> Save Measurements
+      </button>
+    </div>
+  )
+}
 
 const CustomFoodForm: React.FC<{ onSave: (food: any) => void; onCancel: () => void }> = ({ onSave, onCancel }) => {
   const [form, setForm] = useState({
