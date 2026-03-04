@@ -65,6 +65,17 @@ const tools: Anthropic.Tool[] = [
       required: ['amount_ml'],
     },
   },
+  {
+    name: 'remove_food',
+    description: 'Remove a previously logged food entry by its ID. Use this when the user wants to correct, replace, or delete a food they already logged today.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        entry_id: { type: 'string', description: 'The ID of the diary entry to remove, from the list of today\'s logged entries.' },
+      },
+      required: ['entry_id'],
+    },
+  },
 ]
 
 export default async function handler(req: Request): Promise<Response> {
@@ -84,6 +95,11 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: 'messages array required' }), { status: 400 })
   }
 
+  const todayEntries = (context?.todayEntries as Array<{ id: string; name: string; meal: string; calories: number }> | undefined) ?? []
+  const entriesList = todayEntries.length > 0
+    ? todayEntries.map(e => `  - [${e.id}] ${e.name} (${e.meal}, ${Math.round(e.calories)} kcal)`).join('\n')
+    : '  (none yet)'
+
   const systemPrompt = `You are a friendly fitness and nutrition assistant built into a macro tracker app called MacroFit.
 
 USER CONTEXT:
@@ -92,6 +108,9 @@ USER CONTEXT:
 - Calories logged today: ${context?.todayCalories ?? 0} kcal
 - Current weight: ${context?.currentWeight ?? 'not set'}
 - Weight unit preference: ${context?.weightUnit ?? 'lbs'}
+
+TODAY'S LOGGED ENTRIES (with IDs):
+${entriesList}
 
 RULES:
 1. When the user describes food they ate, call log_food for EACH distinct food item. Provide accurate macro values using your nutrition knowledge.
@@ -102,7 +121,8 @@ RULES:
 6. When the user mentions drinking water or any fluid, call log_water.
 7. After using tools, give a short friendly summary of what was logged with the totals.
 8. If the user asks a general nutrition question, answer it without logging anything.
-9. If the meal type isn't mentioned, pick the most logical one based on context.`
+9. If the meal type isn't mentioned, pick the most logical one based on context.
+10. CRITICAL — when the user corrects, refines, or replaces a food they already logged (e.g. "actually it was 93/7 beef", "change that to 2 cups", "remove the ground beef"): call remove_food with the matching entry ID first, then call log_food with the corrected details. NEVER add a new entry without removing the old one when the intent is a correction. Match the entry by name/context from TODAY'S LOGGED ENTRIES above.`
 
   try {
     const actions: Array<{ tool: string; input: Record<string, unknown> }> = []

@@ -40,7 +40,7 @@ export const ChatInterface: React.FC = () => {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { goals, diary, currentWeightKg, profile, addFoodEntry, addWeightEntry, addWater, updateStreak } = useStore()
+  const { goals, diary, currentWeightKg, profile, addFoodEntry, removeFoodEntry, addWeightEntry, addWater, updateStreak } = useStore()
 
   // Scroll to bottom whenever messages change
   useEffect(() => {
@@ -53,10 +53,20 @@ export const ChatInterface: React.FC = () => {
   }, [open])
 
   const getTodayCalories = () => {
-    const today = getTodayString()
-    const day = diary[today]
+    const day = diary[getTodayString()]
     if (!day) return 0
     return day.entries.reduce((sum, e) => sum + e.food.calories * e.servings, 0)
+  }
+
+  const getTodayEntries = () => {
+    const day = diary[getTodayString()]
+    if (!day) return []
+    return day.entries.map(e => ({
+      id: e.id,
+      name: e.food.name,
+      meal: e.mealType,
+      calories: e.food.calories * e.servings,
+    }))
   }
 
   const sendMessage = async () => {
@@ -83,6 +93,7 @@ export const ChatInterface: React.FC = () => {
           context: {
             goals: { calories: goals.calories, protein: goals.protein, carbs: goals.carbs, fat: goals.fat },
             todayCalories: Math.round(getTodayCalories()),
+            todayEntries: getTodayEntries(),
             currentWeight: `${(currentWeightKg * (profile.weightUnit === 'lbs' ? 2.20462 : 1)).toFixed(1)} ${profile.weightUnit}`,
             weightUnit: profile.weightUnit,
           },
@@ -140,6 +151,12 @@ export const ChatInterface: React.FC = () => {
             type: 'food',
             summary: `${inp.name} — ${Math.round(inp.calories)} kcal`,
           })
+        }
+
+        if (action.tool === 'remove_food') {
+          const inp = action.input as { entry_id: string }
+          removeFoodEntry(today, inp.entry_id)
+          // no chip shown — it's a silent correction step
         }
 
         if (action.tool === 'log_weight') {
