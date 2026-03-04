@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { Scale, Plus, Trash2, ChevronRight, Award, Flame, Activity, User } from 'lucide-react'
+import { Scale, Plus, Trash2, ChevronRight, Award, Flame, Activity, User, LogOut } from 'lucide-react'
+import { googleLogout } from '@react-oauth/google'
 import { useStore } from '../store/useStore'
 import { Navbar } from '../components/Layout/Navbar'
 import { calculateBMI, getBMICategory, kgToLbs, lbsToKg, cmToFeetInches, getTodayString } from '../utils/calculations'
@@ -18,6 +19,8 @@ const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
 
 export const Profile: React.FC = () => {
   const profile = useStore(s => s.profile)
+  const googleUser = useStore(s => s.googleUser)
+  const setGoogleUser = useStore(s => s.setGoogleUser)
   const currentWeightKg = useStore(s => s.currentWeightKg)
   const weightLog = useStore(s => s.weightLog)
   const streak = useStore(s => s.streak)
@@ -70,12 +73,17 @@ export const Profile: React.FC = () => {
         {/* Profile summary card */}
         <div className="card p-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-2xl">
-              <User className="w-8 h-8 text-primary-500" />
-            </div>
+            {googleUser?.picture ? (
+              <img src={googleUser.picture} alt="avatar" className="w-16 h-16 rounded-full object-cover" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-2xl">
+                <User className="w-8 h-8 text-primary-500" />
+              </div>
+            )}
             <div className="flex-1">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{profile.name || 'Your Name'}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
+                {googleUser?.email && <span className="block text-xs">{googleUser.email}</span>}
                 {profile.age}y · {profile.gender} · {
                   profile.heightUnit === 'cm'
                     ? `${profile.heightCm}cm`
@@ -83,6 +91,13 @@ export const Profile: React.FC = () => {
                 }
               </p>
             </div>
+            <button
+              onClick={() => { googleLogout(); setGoogleUser(null) }}
+              className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              title="Sign out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Stats row */}

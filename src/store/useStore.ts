@@ -8,7 +8,18 @@ import {
 } from '../types'
 import { getTodayString, calculateBMR, calculateTDEE, calculateCalorieGoal, calculateMacroGoals, lbsToKg } from '../utils/calculations'
 
+export interface GoogleUser {
+  email: string
+  name: string
+  picture: string
+  sub: string  // Google user ID
+}
+
 interface AppState {
+  // Auth
+  googleUser: GoogleUser | null
+  setGoogleUser: (user: GoogleUser | null) => void
+
   // User
   profile: UserProfile
   currentWeightKg: number
@@ -99,6 +110,9 @@ const DEFAULT_GOALS: MacroGoals = {
 export const useStore = create<AppState>()(
   persist(
     immer((set, get) => ({
+      googleUser: null,
+      setGoogleUser: (user) => set((state) => { state.googleUser = user }),
+
       profile: DEFAULT_PROFILE,
       currentWeightKg: 75,
       goals: DEFAULT_GOALS,
