@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useStore } from './store/useStore'
 import { BottomNav } from './components/Layout/BottomNav'
+import { ChatInterface } from './components/Chat/ChatInterface'
 import { Dashboard } from './pages/Dashboard'
 import { Diary } from './pages/Diary'
 import { Progress } from './pages/Progress'
@@ -30,6 +31,7 @@ export const App: React.FC = () => {
           <Route path="/profile" element={<Profile />} />
         </Routes>
         <BottomNav />
+        <ChatInterface />
       </div>
     </BrowserRouter>
   )
