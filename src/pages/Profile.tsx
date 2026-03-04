@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
-import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image } from 'lucide-react'
+import { Scale, Plus, Trash2, Award, Flame, User, Ruler, Image, LogOut } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { useAuth } from '../contexts/AuthContext'
 import { Navbar } from '../components/Layout/Navbar'
 import { calculateBMI, getBMICategory, kgToLbs, cmToFeetInches, getTodayString } from '../utils/calculations'
 import { ActivityLevel, WeightGoal, UserProfile, PhotoPose } from '../types'
@@ -36,6 +37,8 @@ export const Profile: React.FC = () => {
   const progressPhotos = useStore(s => s.progressPhotos)
   const addProgressPhoto = useStore(s => s.addProgressPhoto)
   const removeProgressPhoto = useStore(s => s.removeProgressPhoto)
+
+  const { user, signOut } = useAuth()
 
   const [activeTab, setActiveTab] = useState<Tab>('profile')
   const [newWeight, setNewWeight] = useState('')
@@ -99,7 +102,7 @@ export const Profile: React.FC = () => {
             <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-2xl">
               <User className="w-8 h-8 text-primary-500" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{profile.name || 'Your Name'}</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {profile.age}y · {profile.gender} · {
@@ -108,7 +111,17 @@ export const Profile: React.FC = () => {
                     : cmToFeetInches(profile.heightCm)
                 }
               </p>
+              {user?.email && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{user.email}</p>
+              )}
             </div>
+            <button
+              onClick={signOut}
+              title="Sign out"
+              className="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Stats row */}

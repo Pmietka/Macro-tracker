@@ -86,6 +86,9 @@ interface AppState {
   stopFasting: () => void
 
   getDayOrCreate: (date: string) => DiaryDay
+
+  // Bulk hydrate from cloud (used by AuthContext after login)
+  hydrateStore: (data: Partial<AppState>) => void
 }
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -359,6 +362,19 @@ export const useStore = create<AppState>()(
         state.fastingSession = { startTime: Date.now(), targetHours }
       }),
       stopFasting: () => set((state) => { state.fastingSession = null }),
+
+      hydrateStore: (data) => set((state) => {
+        const syncFields = [
+          'profile', 'currentWeightKg', 'goals', 'diary', 'weightLog',
+          'mealTemplates', 'customFoods', 'recentFoodIds', 'streak',
+          'darkMode', 'bodyMeasurements', 'fastingSession',
+        ] as const
+        for (const key of syncFields) {
+          if (key in data && data[key] !== undefined) {
+            (state as Record<string, unknown>)[key] = data[key]
+          }
+        }
+      }),
     })),
     {
       name: 'macrofit-storage',
