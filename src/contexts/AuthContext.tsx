@@ -10,6 +10,8 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>
   signInWithGoogle: () => Promise<{ error: Error | null }>
+  signInWithGitHub: () => Promise<{ error: Error | null }>
+  signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   syncStatus: 'idle' | 'saving' | 'saved' | 'error'
 }
@@ -157,6 +159,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error: error as Error | null }
   }
 
+  const signInWithGitHub = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: { redirectTo: window.location.origin },
+    })
+    return { error: error as Error | null }
+  }
+
+  const signInWithMagicLink = async (email: string) => {
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    })
+    return { error: error as Error | null }
+  }
+
   const signOut = async () => {
     flushSave()
     await supabase.auth.signOut()
@@ -166,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signInWithGoogle, signOut, syncStatus }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signInWithGoogle, signInWithGitHub, signInWithMagicLink, signOut, syncStatus }}>
       {children}
     </AuthContext.Provider>
   )
