@@ -113,16 +113,27 @@ TODAY'S LOGGED ENTRIES (with IDs):
 ${entriesList}
 
 RULES:
-1. When the user describes food they ate, call log_food for EACH distinct food item. Provide accurate macro values using your nutrition knowledge.
-2. When cooking oils/fats are mentioned (e.g. "cooked in olive oil"), log them separately as their own entry.
-3. For the "calories", "protein", "carbs", "fat", etc. fields — provide the TOTAL for the quantity described (not per 100g).
-4. servingSize + servingUnit should describe what ONE serving is. servings is how many of those they ate.
-5. When the user mentions their weight, call log_weight.
-6. When the user mentions drinking water or any fluid, call log_water.
-7. After using tools, give a short friendly summary of what was logged with the totals.
-8. If the user asks a general nutrition question, answer it without logging anything.
-9. If the meal type isn't mentioned, pick the most logical one based on context.
-10. CRITICAL — when the user corrects, refines, or replaces a food they already logged (e.g. "actually it was 93/7 beef", "change that to 2 cups", "remove the ground beef"): call remove_food with the matching entry ID first, then call log_food with the corrected details. NEVER add a new entry without removing the old one when the intent is a correction. Match the entry by name/context from TODAY'S LOGGED ENTRIES above.`
+
+LOGGING NEW FOOD:
+1. When the user describes food they ate, call log_food once for EACH distinct food item. Do not skip any item, no matter how small or oddly described (e.g. "1/3 scoop protein powder", "5 tablespoons yogurt").
+2. When cooking oils/fats are mentioned (e.g. "fried in olive oil"), log the oil separately as its own entry.
+3. Provide accurate macro values based on your nutrition knowledge. The calories/protein/carbs/fat/fiber/sugar/sodium fields must be the TOTAL for the quantity described (not per 100g or per serving).
+4. servingSize + servingUnit describe ONE serving. servings is how many they consumed.
+5. If the meal type isn't stated, infer it from context (e.g. "for lunch" → Lunch).
+
+DUPLICATE GUARD — CRITICAL:
+6. Before calling log_food, check TODAY'S LOGGED ENTRIES above. If an item with the same or very similar name is already listed there, do NOT log it again. Skip it entirely.
+7. If the user says you "missed" or "forgot" an item: look at TODAY'S LOGGED ENTRIES. Only call log_food for items not already in that list. Do NOT re-log items that are already there.
+
+CORRECTIONS:
+8. If the user wants to change an item already logged (e.g. "actually it was 5 eggs not 4", "change that to 2 cups"): call remove_food with the matching entry ID first, then call log_food with the corrected values.
+9. If the user wants to remove an item: call remove_food only. Do not re-log it.
+
+OTHER:
+10. When the user mentions their weight, call log_weight.
+11. When the user mentions drinking water or any fluid, call log_water.
+12. After using tools, give a short friendly summary of what was logged.
+13. If the user asks a general nutrition question, answer it — do not log anything.`
 
   try {
     const actions: Array<{ tool: string; input: Record<string, unknown> }> = []
@@ -130,7 +141,7 @@ RULES:
 
     // First turn
     const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: systemPrompt,
       tools,
@@ -151,14 +162,18 @@ RULES:
     if (actions.length > 0 && response.stop_reason === 'tool_use') {
       const toolResults: Anthropic.ToolResultBlockParam[] = response.content
         .filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-        .map(b => ({
-          type: 'tool_result' as const,
-          tool_use_id: b.id,
-          content: 'Logged successfully.',
-        }))
+        .map(b => {
+          const input = b.input as Record<string, unknown>
+          let content = 'Done.'
+          if (b.name === 'log_food') content = `Logged: ${input.name} (${input.calories} kcal, ${input.protein}g protein)`
+          else if (b.name === 'remove_food') content = `Removed entry ${input.entry_id}`
+          else if (b.name === 'log_weight') content = `Logged weight: ${input.weight} ${input.unit}`
+          else if (b.name === 'log_water') content = `Logged water: ${input.amount_ml} ml`
+          return { type: 'tool_result' as const, tool_use_id: b.id, content }
+        })
 
       const followUp = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-6',
         max_tokens: 512,
         system: systemPrompt,
         tools,
