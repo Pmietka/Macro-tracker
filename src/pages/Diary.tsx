@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Trash2, ChevronLeft, ChevronRight, Copy, Dumbbell, ChevronDown, ChevronUp, Edit2, ChefHat, Bookmark } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight, Copy, Dumbbell, ChevronDown, ChevronUp, Edit2, ChefHat, Bookmark, X, Check } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Navbar } from '../components/Layout/Navbar'
 import { FoodSearchModal } from '../components/FoodSearchModal'
@@ -28,6 +28,9 @@ export const Diary: React.FC = () => {
   const [expandedMeals, setExpandedMeals] = useState<Set<string>>(new Set(['Breakfast', 'Lunch', 'Dinner', 'Snacks']))
   const [editingEntry, setEditingEntry] = useState<string | null>(null)
   const [editServings, setEditServings] = useState('')
+  const [namingMeal, setNamingMeal] = useState<MealType | null>(null)
+  const [templateName, setTemplateName] = useState('')
+  const [savedTemplate, setSavedTemplate] = useState<string | null>(null)
 
   const day = useStore(s => s.diary[currentDate] ?? { date: currentDate, entries: [], waterIntake: 0, exercises: [] })
   const goals = useStore(s => s.goals)
@@ -38,12 +41,23 @@ export const Diary: React.FC = () => {
   const copyMealEntries = useStore(s => s.copyMealEntries)
   const mealTemplates = useStore(s => s.mealTemplates)
   const applyMealTemplate = useStore(s => s.applyMealTemplate)
+  const saveMealTemplate = useStore(s => s.saveMealTemplate)
   const currentWeightKg = useStore(s => s.currentWeightKg)
   const addExerciseEntry = useStore(s => s.addExerciseEntry)
 
   const nutrition = useMemo(() => getDayNutrition(day), [day])
 
   const isToday = currentDate === getTodayString()
+
+  const handleSaveTemplate = (meal: MealType) => {
+    const name = templateName.trim()
+    if (!name) return
+    saveMealTemplate(name, currentDate, meal)
+    setNamingMeal(null)
+    setTemplateName('')
+    setSavedTemplate(name)
+    setTimeout(() => setSavedTemplate(null), 3000)
+  }
 
   const navigateDate = (dir: -1 | 1) => {
     const d = new Date(currentDate + 'T12:00:00')
@@ -122,6 +136,13 @@ export const Diary: React.FC = () => {
       </div>
 
       <div className="page-container space-y-4">
+
+        {savedTemplate && (
+          <div className="flex items-center gap-2 rounded-xl bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 px-3 py-2 text-sm text-primary-700 dark:text-primary-300">
+            <Check className="w-4 h-4 shrink-0" />
+            <span>Saved &ldquo;{savedTemplate}&rdquo; — find it under Quick Add.</span>
+          </div>
+        )}
 
         {/* Quick-add favorites (meal templates) */}
         {mealTemplates.length > 0 && (
@@ -259,6 +280,48 @@ export const Diary: React.FC = () => {
                     <Plus className="w-4 h-4" />
                     Add food to {meal}
                   </button>
+
+                  {/* Save this meal as a template. Only offered when there is
+                      something to save; the templates appear in Quick Add above. */}
+                  {entries.length > 0 && (
+                    namingMeal === meal ? (
+                      <form
+                        onSubmit={e => { e.preventDefault(); handleSaveTemplate(meal) }}
+                        className="flex items-center gap-2 border-t dark:border-gray-700 p-3"
+                      >
+                        <input
+                          autoFocus
+                          value={templateName}
+                          onChange={e => setTemplateName(e.target.value)}
+                          placeholder={`Name this template, e.g. ${meal} - my usual`}
+                          className="input-field flex-1 text-sm"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!templateName.trim()}
+                          className="btn-primary text-sm px-3 py-1.5 disabled:opacity-40"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setNamingMeal(null); setTemplateName('') }}
+                          className="btn-icon p-1.5"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        onClick={() => { setNamingMeal(meal); setTemplateName('') }}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-gray-500 dark:text-gray-400 border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                      >
+                        <Bookmark className="w-3.5 h-3.5" />
+                        Save {meal} as template
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
