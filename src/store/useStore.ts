@@ -367,7 +367,7 @@ export const useStore = create<AppState>()(
         const syncFields = [
           'profile', 'currentWeightKg', 'goals', 'diary', 'weightLog',
           'mealTemplates', 'customFoods', 'recentFoodIds', 'streak',
-          'darkMode', 'bodyMeasurements', 'fastingSession',
+          'darkMode', 'bodyMeasurements', 'fastingSession', 'progressPhotos',
         ] as const
         for (const key of syncFields) {
           if (key in data && data[key] !== undefined) {
