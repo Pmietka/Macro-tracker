@@ -16,6 +16,13 @@ CREATE POLICY "Users manage own data"
   USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- 2b. Table privileges.
+-- RLS decides WHICH ROWS a role may touch, but Postgres checks table-level privileges
+-- first. Without this grant every authenticated request fails with
+-- 42501 "permission denied for table user_data" and the app reports a sync error,
+-- even though the policy above is correct.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.user_data TO authenticated;
+
 -- 3. Auto-update the updated_at timestamp
 CREATE OR REPLACE FUNCTION public.update_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
